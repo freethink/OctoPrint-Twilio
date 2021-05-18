@@ -36,8 +36,10 @@ class SMSNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
             account_sid="",
             auth_token="",
             printer_name="",
+            on_print_pause=False,
+            on_print_done=True,
             message_format=dict(
-                body="{printer_name} job complete: {filename} done printing after {elapsed_time}"
+                body="{printer_name} event: {event} - {filename} - {elapsed_time}"
             )
         )
 
@@ -54,11 +56,19 @@ class SMSNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
     # EventPlugin
 
     def on_event(self, event, payload):
-        if event != "PrintDone":
+        if event != "PrintDone" or event != "PrintPause" :
             return
 
         if not self._settings.get(['enabled']):
             return
+
+        if event == "PrintDone" and not self._settings.get(['on_print_done']):
+            return
+
+        if event == "PrintPause" and not self._settings.get(['on_print_pause']):
+            return
+
+        payload["event"] = event
 
         if self._settings.get(['send_image']):
             snapshot_url = self._settings.global_get(["webcam", "snapshot"])
@@ -103,6 +113,7 @@ class SMSNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
     def _send_txt(self, payload, media_url=values.unset):
 
         filename = payload["name"]
+        event = payload["event"]
 
         import datetime
         import octoprint.util
@@ -111,6 +122,7 @@ class SMSNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
         fromnumber = phonenumbers.format_number(phonenumbers.parse(self._settings.get(['from_number']), 'US'), phonenumbers.PhoneNumberFormat.E164)
 
         tags = {
+            'event': event,
             'filename': filename,
             'elapsed_time': elapsed_time,
             'printer_name': self._settings.get(["printer_name"])
@@ -133,7 +145,7 @@ class SMSNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
                 self._logger.info("Print notification sent to %s" % (tonumber))
 
         # all messages were attempted to be sent
-        return True 
+        return True
 
     def _process_snapshot(self, snapshot_path, pixfmt="yuv420p"):
         hflip = self._settings.global_get_boolean(["webcam", "flipH"])
